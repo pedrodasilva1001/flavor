@@ -24,9 +24,14 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 def get_db_connection():
     if DATABASE_URL and HAS_PG:
         try:
-            # psycopg2 aceita conexões postgres:// e postgresql://
-            # No Render, a variável DATABASE_URL é injetada automaticamente pelo Supabase/Neon
-            conn = psycopg2.connect(DATABASE_URL)
+            url = DATABASE_URL
+            # Garante sslmode=require para evitar rejeição por falta de SSL no Supabase/Neon
+            if "sslmode=" not in url:
+                if "?" in url:
+                    url += "&sslmode=require"
+                else:
+                    url += "?sslmode=require"
+            conn = psycopg2.connect(url)
             return conn, True
         except Exception as e:
             print("Erro ao conectar ao PostgreSQL, usando SQLite local:", e)
