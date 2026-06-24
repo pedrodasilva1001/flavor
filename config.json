@@ -1,0 +1,20 @@
+{
+  "pixKey": "sabordaterravls@gmail.com",
+  "merchantName": "Sabor da Terra",
+  "merchantCity": "Valinhos",
+  "simulationMode": true,
+  "mercadoPago": {
+    "accessToken": "SEU_MERCADO_PAGO_ACCESS_TOKEN_AQUI"
+  },
+  "focusNfe": {
+    "token": "SEU_FOCUS_NFE_TOKEN_AQUI",
+    "sandbox": true
+  },
+  "email": {
+    "notifyTo": "sabordaterravls@gmail.com",
+    "smtpHost": "smtp.gmail.com",
+    "smtpPort": 587,
+    "smtpUser": "seu_email@gmail.com",
+    "smtpPass": "sua_senha_app_gmail"
+  }
+}

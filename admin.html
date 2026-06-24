@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sabor da Terra | Painel Administrativo</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      background-color: #f5f3ef;
+      padding: 2rem;
+    }
+    .admin-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+      border: 1px solid rgba(0,0,0,0.05);
+    }
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      border-bottom: 2px solid #f4f0e6;
+      padding-bottom: 1rem;
+    }
+    .admin-header h2 {
+      font-family: var(--font-serif);
+      color: var(--primary);
+    }
+    .refresh-btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .refresh-btn:hover {
+      background: var(--primary-light);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+    }
+    th, td {
+      padding: 1rem;
+      text-align: left;
+      border-bottom: 1px solid #f4f0e6;
+    }
+    th {
+      background-color: #faf8f5;
+      color: var(--primary);
+      font-weight: 600;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 50px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-pending {
+      background-color: #fef3c7;
+      color: #d97706;
+    }
+    .status-paid {
+      background-color: #d1fae5;
+      color: #065f46;
+    }
+    .invoice-emitted {
+      background-color: #dbeafe;
+      color: #1e40af;
+    }
+    .simulate-btn {
+      background: #25d366;
+      color: #fff;
+      border: none;
+      padding: 0.35rem 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .simulate-btn:hover {
+      background: #20ba5a;
+    }
+    .invoice-key {
+      font-family: monospace;
+      font-size: 0.75rem;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="admin-container">
+    <div class="admin-header">
+      <h2>Sabor da Terra - Pedidos e Notas Fiscais</h2>
+      <button class="refresh-btn" onclick="loadOrders()">Atualizar Lista</button>
+    </div>
+
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>ID Pedido</th>
+            <th>Data</th>
+            <th>Cliente</th>
+            <th>CPF</th>
+            <th>Itens Pedidos</th>
+            <th>Total</th>
+            <th>Status Pagamento</th>
+            <th>Status Nota Fiscal</th>
+            <th>Chave da Nota</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="orders-table-body">
+          <tr>
+            <td colspan="10" style="text-align: center; color: var(--text-muted);">Carregando pedidos...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    async function loadOrders() {
+      try {
+        const res = await fetch("/api/admin/orders");
+        const orders = await res.json();
+        const tbody = document.getElementById("orders-table-body");
+        tbody.innerHTML = "";
+
+        if (orders.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">Nenhum pedido registrado no banco de dados.</td></tr>`;
+          return;
+        }
+
+        orders.forEach(order => {
+          const date = new Date(order.created_at).toLocaleString("pt-BR");
+          const totalFormatted = parseFloat(order.total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+          
+          let paymentBadge = `<span class="status-badge status-pending">Pendente</span>`;
+          let actionButton = `<button class="simulate-btn" onclick="simulatePayment('${order.id}')">Simular Pago</button>`;
+          
+          if (order.status === "paid") {
+            paymentBadge = `<span class="status-badge status-paid">Pago</span>`;
+            actionButton = `<span style="color: green; font-weight:600;">Concluído</span>`;
+          }
+
+          let invoiceBadge = `<span class="status-badge status-pending">Aguardando</span>`;
+          if (order.invoice_status === "emitted") {
+            invoiceBadge = `<span class="status-badge invoice-emitted">Emitida</span>`;
+          } else if (order.invoice_status === "failed") {
+            invoiceBadge = `<span class="status-badge" style="background:#fee2e2; color:#991b1b">Falhou</span>`;
+          }
+
+          const invoiceKey = order.invoice_id ? `<span class="invoice-key" title="${order.invoice_id}">${order.invoice_id}</span>` : "-";
+
+          let itemsHtml = "";
+          if (order.items && order.items.length > 0) {
+            itemsHtml = order.items.map(item => {
+              return `<div style="font-size:0.8rem; margin-bottom: 0.25rem; border-bottom:1px dashed #f4f0e6; padding-bottom:0.25rem;">
+                <strong>${item.quantity}x</strong> ${item.product_name} (${item.weight})
+              </div>`;
+            }).join("");
+          } else {
+            itemsHtml = `<span style="color:var(--text-muted);">Sem itens</span>`;
+          }
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td><strong>${order.id}</strong></td>
+            <td>${date}</td>
+            <td>${order.client_name}<br><small style="color:var(--text-muted);">${order.client_email}</small></td>
+            <td>${order.client_cpf}</td>
+            <td>${itemsHtml}</td>
+            <td><strong>${totalFormatted}</strong></td>
+            <td>${paymentBadge}</td>
+            <td>${invoiceBadge}</td>
+            <td>${invoiceKey}</td>
+            <td>${actionButton}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        console.error("Erro ao carregar pedidos:", err);
+      }
+    }
+
+    async function simulatePayment(orderId) {
+      if (!confirm(`Deseja simular o pagamento do pedido ${orderId}?`)) return;
+      try {
+        const res = await fetch(`/api/simulate-payment/${orderId}`, { method: "POST" });
+        const data = await res.json();
+        alert(data.message);
+        loadOrders();
+      } catch (err) {
+        console.error("Erro ao simular pagamento:", err);
+      }
+    }
+
+    // Inicialização
+    loadOrders();
+    // Auto-update a cada 5 segundos
+    setInterval(loadOrders, 5000);
+  </script>
+</body>
+</html>

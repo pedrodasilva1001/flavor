@@ -1,0 +1,15 @@
+{
+  "name": "sabor-da-terra-catalogo",
+  "version": "1.0.0",
+  "description": "Catálogo online automatizado com Pix PJ e Nota Fiscal para Sabor da Terra",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "sqlite3": "^5.1.7"
+  }
+}

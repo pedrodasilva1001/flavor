@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sabor da Terra - Produtos Naturais | Catálogo Online</title>
+  <meta name="description" content="Navegue pelo nosso catálogo de produtos naturais, castanhas, sementes, granolas, farinhas e doces de alta qualidade. Faça seu pedido online com Pix automático e Nota Fiscal!">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-container">
+      <div class="brand-wrapper">
+        <img src="saborfoto.jpg" alt="Logo Sabor da Terra" class="brand-logo" id="brand-logo-img" onerror="this.src='https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?auto=format&fit=crop&q=80&w=100';">
+        <div class="brand-info">
+          <h1>Sabor da Terra</h1>
+          <p>Produtos Naturais</p>
+        </div>
+      </div>
+      <div class="header-contact">
+        <a href="https://instagram.com/SABORDATERRAVLS" target="_blank" class="contact-link" id="header-insta-link">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+          @SABORDATERRAVLS
+        </a>
+        <a href="/admin" target="_blank" class="contact-link admin-btn" id="header-admin-link" style="background-color: var(--primary-ultra-light); color: var(--primary);">
+          Painel Admin
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <span class="hero-tag">100% Saudável & Natural</span>
+    <h2>Escolha saúde, viva com <span>mais sabor</span></h2>
+    <p>Adicione os itens ao carrinho, preencha os dados da sua Nota Fiscal e realize o pagamento via Pix. Tudo 100% automático e seguro!</p>
+  </section>
+
+  <!-- Busca e Filtros -->
+  <div class="controls-container">
+    <div class="controls-wrapper">
+      <!-- Barra de Busca -->
+      <div class="search-box">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="search-input" placeholder="Pesquisar por castanhas, farinhas, granolas...">
+      </div>
+
+      <!-- Filtros de Categorias -->
+      <div class="categories-wrapper" id="categories-filter">
+        <button class="filter-btn active" data-category="all" id="btn-filter-all">Todos</button>
+        <button class="filter-btn" data-category="oleaginosas" id="btn-filter-oleaginosas">Castanhas & Oleaginosas</button>
+        <button class="filter-btn" data-category="farinhas" id="btn-filter-farinhas">Farinhas</button>
+        <button class="filter-btn" data-category="sementes-graos" id="btn-filter-sementes-graos">Sementes & Grãos</button>
+        <button class="filter-btn" data-category="granola-mixes" id="btn-filter-granola-mixes">Granolas & Mixes</button>
+        <button class="filter-btn" data-category="frutas-doces" id="btn-filter-frutas-doces">Frutas Secas & Doces</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grid de Produtos -->
+  <section class="products-section">
+    <div class="products-grid" id="products-grid">
+      <!-- Os produtos serão gerados dinamicamente via JS -->
+    </div>
+  </section>
+
+  <!-- Floating Cart Button -->
+  <button class="cart-floating-btn" id="cart-float-btn" aria-label="Ver Carrinho">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+    <span class="cart-badge" id="cart-badge-count">0</span>
+  </button>
+
+  <!-- Carrinho Drawer Overlay -->
+  <div class="cart-drawer-overlay" id="cart-overlay">
+    <div class="cart-drawer" id="cart-drawer">
+      <div class="cart-drawer-header">
+        <h3 id="drawer-title">Seu Carrinho</h3>
+        <button class="close-cart-btn" id="close-cart-btn" aria-label="Fechar Carrinho">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <!-- Área de Conteúdo do Carrinho / Formulário -->
+      <div class="cart-drawer-content-wrapper" style="flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;">
+        <!-- Lista de Itens do Carrinho -->
+        <div class="cart-items-list" id="cart-items-list">
+          <!-- Gerado dinamicamente -->
+        </div>
+
+        <!-- Formulário de Checkout (Escondido inicialmente) -->
+        <div class="checkout-form-container" id="checkout-form-container" style="display: none; padding: 1.5rem; overflow-y: auto; flex-grow: 1;">
+          <h4 style="margin-bottom: 1rem; color: var(--primary); font-family: var(--font-serif);">Dados de Faturamento (Nota Fiscal)</h4>
+          <form id="checkout-form" onsubmit="return false;">
+            <div class="form-group">
+              <label for="client-name">Nome Completo</label>
+              <input type="text" id="client-name" required placeholder="Digite seu nome completo">
+            </div>
+            <div class="form-group">
+              <label for="client-cpf">CPF (obrigatório para Nota Fiscal)</label>
+              <input type="text" id="client-cpf" required placeholder="000.000.000-00">
+            </div>
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="client-email">E-mail (receber a nota)</label>
+                <input type="email" id="client-email" required placeholder="email@exemplo.com">
+              </div>
+              <div class="form-group">
+                <label for="client-phone">Telefone / WhatsApp</label>
+                <input type="text" id="client-phone" required placeholder="(00) 00000-0000">
+              </div>
+            </div>
+            <h4 style="margin: 1.5rem 0 1rem 0; color: var(--primary); font-family: var(--font-serif);">Endereço de Entrega</h4>
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="client-zip">CEP</label>
+                <input type="text" id="client-zip" required placeholder="00000-000">
+              </div>
+              <div class="form-group" style="flex-grow: 2;">
+                <label for="client-city">Cidade</label>
+                <input type="text" id="client-city" required placeholder="Valinhos">
+              </div>
+            </div>
+            <div class="form-group-row">
+              <div class="form-group" style="flex-grow: 3;">
+                <label for="client-street">Rua / Logradouro</label>
+                <input type="text" id="client-street" required placeholder="Rua das Castanhas">
+              </div>
+              <div class="form-group">
+                <label for="client-number">Nº</label>
+                <input type="text" id="client-number" required placeholder="123">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="client-neighborhood">Bairro</label>
+              <input type="text" id="client-neighborhood" required placeholder="Centro">
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Rodapé do Carrinho -->
+      <div class="cart-drawer-footer" id="cart-drawer-footer">
+        <div class="cart-summary-row">
+          <span>Itens selecionados:</span>
+          <span id="cart-items-qty">0</span>
+        </div>
+        <div class="cart-summary-row total">
+          <span>Total:</span>
+          <span id="cart-total-value">R$ 0,00</span>
+        </div>
+        
+        <!-- Botão Avançar para Form -->
+        <button class="checkout-btn" id="btn-go-to-checkout" disabled>
+          Continuar para Checkout
+        </button>
+
+        <!-- Botões do Checkout (Escondidos inicialmente) -->
+        <div class="checkout-actions" id="checkout-actions" style="display: none; gap: 0.5rem; flex-direction: column;">
+          <button class="checkout-btn" id="btn-generate-pix" style="background-color: var(--primary);">
+            Confirmar e Gerar Pix
+          </button>
+          <button class="filter-btn" id="btn-back-to-cart" style="width: 100%; border-radius: var(--radius-sm); border-color: transparent;">
+            Voltar para o Carrinho
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal do Pix Dinâmico e Polling de Pagamento -->
+  <div class="modal-overlay" id="pix-modal-overlay">
+    <div class="modal-content" style="max-width: 450px; text-align: center; padding: 2.5rem 2rem;">
+      <h3 class="modal-title" style="color: var(--primary); margin-bottom: 0.5rem;">Pagamento via Pix PJ</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">Escaneie o QR Code ou copie o código abaixo para pagar.</p>
+      
+      <!-- Caixa do QR Code -->
+      <div style="background: #faf8f5; border: 1px dashed var(--border); padding: 1.5rem; border-radius: var(--radius-md); display: inline-block; margin-bottom: 1.5rem;">
+        <img id="pix-qr-code-img" src="" alt="QR Code Pix" style="width: 200px; height: 200px; display: block; margin: 0 auto;">
+      </div>
+
+      <!-- Pix Copia e Cola -->
+      <div style="margin-bottom: 1.5rem; text-align: left;">
+        <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Pix Copia e Cola</label>
+        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
+          <input type="text" id="pix-code-input" readonly style="flex-grow: 1; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; font-family: monospace; background: #faf8f5;" onclick="this.select()">
+          <button id="btn-copy-pix" style="background: var(--accent); color: #fff; border: none; padding: 0 1rem; border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 600; cursor: pointer;">Copiar</button>
+        </div>
+      </div>
+
+      <!-- Status em Tempo Real -->
+      <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 1rem;">
+        <div class="spinner" style="width: 20px; height: 20px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <span style="font-size: 0.9rem; font-weight: 500; color: var(--text-main);">Aguardando pagamento...</span>
+      </div>
+
+      <!-- BOTÃO DE SIMULAÇÃO DE TESTE (WOW EFFECT!) -->
+      <div style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1.25rem;">
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;">Ambiente de Testes / Simulação</p>
+        <button id="btn-simulate-payment" style="background-color: #25d366; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; width: 100%;">
+          Simular Confirmação do Pix (1-Clique)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Sucesso do Pedido -->
+  <div class="modal-overlay" id="success-modal-overlay">
+    <div class="modal-content" style="max-width: 500px; text-align: center; padding: 3rem 2rem;">
+      <div style="width: 72px; height: 72px; background-color: #d1fae5; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem auto; color: #065f46;">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      </div>
+      <h3 style="font-family: var(--font-serif); font-size: 1.8rem; color: var(--primary); margin-bottom: 0.5rem;">Pagamento Confirmado!</h3>
+      <p style="color: var(--text-muted); margin-bottom: 2rem;">O Pix de sua conta jurídica foi recebido com sucesso na conta da empresa.</p>
+
+      <div style="background-color: #faf8f5; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.5rem; text-align: left; margin-bottom: 2rem; font-size: 0.9rem;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+          <span style="color: var(--text-muted);">ID do Pedido:</span>
+          <strong id="success-order-id" style="color: var(--text-main);">ST-0000</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+          <span style="color: var(--text-muted);">Status da NF-e:</span>
+          <span id="success-invoice-status" style="font-weight: 600; color: #1e40af;">Emitida na SEFAZ</span>
+        </div>
+        <div style="border-top: 1px dashed var(--border); padding-top: 0.75rem; margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">
+          A chave eletrônica da Nota Fiscal e o arquivo em PDF foram enviados automaticamente para o seu e-mail cadastrado.
+        </div>
+      </div>
+
+      <button id="btn-close-success" class="checkout-btn" style="background-color: var(--primary); width: 100%;">
+        Voltar ao Catálogo
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal Genérico de Informações adicionais (ex: Farinha da Felicidade) -->
+  <div class="modal-overlay" id="info-modal-overlay">
+    <div class="modal-content">
+      <button class="modal-close" id="info-modal-close" aria-label="Fechar Modal">&times;</button>
+      <h3 class="modal-title" id="info-modal-title">Farinha da Felicidade</h3>
+      <div class="modal-body" id="info-modal-body">
+        <!-- Conteúdo do modal será injetado pelo JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-container">
+      <div class="footer-section">
+        <h4>Sabor da Terra</h4>
+        <p>Produtos Naturais de alta qualidade selecionados para o seu bem-estar diário.</p>
+        <div class="social-links">
+          <a href="https://instagram.com/SABORDATERRAVLS" target="_blank" class="social-icon" id="footer-insta">Instagram</a>
+        </div>
+      </div>
+      <div class="footer-section">
+        <h4>Como Pagar</h4>
+        <p>Aceitamos Pix PJ automático na finalização da compra.</p>
+        <p><strong>Beneficiário PJ:</strong> Sabor da Terra</p>
+        <p><strong>Chave PIX:</strong> sabordaterravls@gmail.com</p>
+      </div>
+      <div class="footer-section">
+        <h4>Contato</h4>
+        <p>Dúvidas ou encomendas personalizadas?</p>
+        <p><strong>WhatsApp:</strong> +55 19 99407-3102</p>
+        <p><strong>Instagram:</strong> @SABORDATERRAVLS</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Sabor da Terra. Todos os direitos reservados. Feito com amor por produtos naturais.</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="products.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

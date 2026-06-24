@@ -1,0 +1,16 @@
+# Banco de dados SQLite local
+database.db
+database.db-journal
+
+# Credenciais privadas (chaves de producao locais)
+config.json
+
+# IDEs e editores
+.vscode/
+.idea/
+
+# Node.js temporario (caso tenha sido criado)
+node_modules/
+package-lock.json
+package.json
+server.js
