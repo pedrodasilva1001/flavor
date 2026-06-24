@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
+const { Pool } = require("pg");
 const sqlite3 = require("sqlite3").verbose();
 
 const app = express();
@@ -30,89 +31,271 @@ if (fs.existsSync(configPath)) {
   }
 }
 
-// Banco de Dados SQLite
-const dbPath = path.join(__dirname, "database.db");
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error("Erro ao conectar no banco de dados:", err);
-  } else {
-    console.log("Banco de dados SQLite conectado com sucesso!");
-    initDatabase();
+// --- CONFIGURAÇÃO E CONEXÃO DO BANCO DE DADOS ---
+const DATABASE_URL = process.env.DATABASE_URL;
+let pgPool = null;
+let sqliteDb = null;
+let isPg = false;
+
+if (DATABASE_URL) {
+  try {
+    let url = DATABASE_URL;
+    // Garante sslmode=require para evitar rejeição por falta de SSL no Supabase
+    if (!url.includes("sslmode=")) {
+      url += url.includes("?") ? "&sslmode=require" : "?sslmode=require";
+    }
+    pgPool = new Pool({
+      connectionString: url,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+    isPg = true;
+    console.log("PostgreSQL/Supabase configurado como banco principal.");
+  } catch (err) {
+    console.error("Erro ao configurar PostgreSQL, usando SQLite local:", err);
+    isPg = false;
   }
-});
-
-// Inicialização das tabelas
-function initDatabase() {
-  db.serialize(() => {
-    // Tabela de Pedidos
-    db.run(`
-      CREATE TABLE IF NOT EXISTS pedidos (
-        id TEXT PRIMARY KEY,
-        client_name TEXT,
-        client_cpf TEXT,
-        client_email TEXT,
-        client_phone TEXT,
-        client_zip TEXT,
-        client_address TEXT,
-        total REAL,
-        status TEXT,
-        pix_code TEXT,
-        invoice_status TEXT,
-        invoice_id TEXT,
-        created_at TEXT
-      )
-    `);
-
-    // Tabela de Itens de Pedidos
-    db.run(`
-      CREATE TABLE IF NOT EXISTS itens_pedido (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_id TEXT,
-        product_id TEXT,
-        product_name TEXT,
-        weight TEXT,
-        quantity INTEGER,
-        price REAL,
-        FOREIGN KEY(order_id) REFERENCES pedidos(id)
-      )
-    `);
-  });
 }
 
+// Inicialização do Banco
+function initDatabase() {
+  const queryPedidos = `
+    CREATE TABLE IF NOT EXISTS pedidos (
+      id VARCHAR(50) PRIMARY KEY,
+      client_name VARCHAR(150),
+      client_cpf VARCHAR(20),
+      client_email VARCHAR(100),
+      client_phone VARCHAR(20),
+      client_zip VARCHAR(20),
+      client_address TEXT,
+      total REAL,
+      status VARCHAR(20),
+      pix_code TEXT,
+      invoice_status VARCHAR(20),
+      invoice_id TEXT,
+      created_at VARCHAR(50)
+    )
+  `;
+
+  const itemPk = isPg ? "id SERIAL PRIMARY KEY" : "id INTEGER PRIMARY KEY AUTOINCREMENT";
+  const queryItens = `
+    CREATE TABLE IF NOT EXISTS itens_pedido (
+      ${itemPk},
+      order_id VARCHAR(50),
+      product_id VARCHAR(50),
+      product_name VARCHAR(150),
+      weight VARCHAR(20),
+      quantity INTEGER,
+      price REAL,
+      FOREIGN KEY(order_id) REFERENCES pedidos(id)
+    )
+  `;
+
+  if (isPg) {
+    pgPool.query(queryPedidos)
+      .then(() => pgPool.query(queryItens))
+      .then(() => {
+        console.log("Banco de dados PostgreSQL (Supabase) inicializado com sucesso!");
+      })
+      .catch((err) => {
+        console.error("Erro ao inicializar tabelas no PostgreSQL, tentando fallback para SQLite:", err);
+        isPg = false;
+        fallbackToSQLite();
+      });
+  } else {
+    fallbackToSQLite();
+  }
+
+  function fallbackToSQLite() {
+    const dbPath = path.join(__dirname, "database.db");
+    sqliteDb = new sqlite3.Database(dbPath, (err) => {
+      if (err) {
+        console.error("Erro ao conectar no banco de dados SQLite:", err);
+      } else {
+        sqliteDb.serialize(() => {
+          sqliteDb.run(queryPedidos);
+          sqliteDb.run(queryItens, (err) => {
+            if (!err) {
+              console.log("Banco de dados SQLite (Local) inicializado com sucesso!");
+            } else {
+              console.error("Erro ao criar tabelas no SQLite:", err);
+            }
+          });
+        });
+      }
+    });
+  }
+}
+
+// Inicializa o banco de dados
+initDatabase();
+
+// --- ABSTRAÇÃO E HELPERS DE CONSULTA SQL ---
+
+// Converte placeholders ? do SQLite para $1, $2, ... do PostgreSQL
+function convertPlaceholders(sql) {
+  if (!isPg) return sql;
+  let index = 1;
+  return sql.replace(/\?/g, () => `$${index++}`);
+}
+
+async function runQuery(sql, params = []) {
+  const queryStr = convertPlaceholders(sql);
+  if (isPg) {
+    await pgPool.query(queryStr, params);
+  } else {
+    return new Promise((resolve, reject) => {
+      sqliteDb.run(queryStr, params, function (err) {
+        if (err) reject(err);
+        else resolve(this);
+      });
+    });
+  }
+}
+
+async function getRow(sql, params = []) {
+  const queryStr = convertPlaceholders(sql);
+  if (isPg) {
+    const res = await pgPool.query(queryStr, params);
+    return res.rows[0] || null;
+  } else {
+    return new Promise((resolve, reject) => {
+      sqliteDb.get(queryStr, params, (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      });
+    });
+  }
+}
+
+async function getAllRows(sql, params = []) {
+  const queryStr = convertPlaceholders(sql);
+  if (isPg) {
+    const res = await pgPool.query(queryStr, params);
+    return res.rows;
+  } else {
+    return new Promise((resolve, reject) => {
+      sqliteDb.all(queryStr, params, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+  }
+}
+
+async function saveOrderAndItems(orderParams, items) {
+  if (isPg) {
+    const client = await pgPool.connect();
+    try {
+      await client.query("BEGIN");
+      const orderSql = convertPlaceholders(`
+        INSERT INTO pedidos (id, client_name, client_cpf, client_email, client_phone, client_zip, client_address, total, status, pix_code, invoice_status, invoice_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      await client.query(orderSql, orderParams);
+
+      const itemSql = convertPlaceholders(`
+        INSERT INTO itens_pedido (order_id, product_id, product_name, weight, quantity, price)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const item of items) {
+        await client.query(itemSql, item);
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  } else {
+    return new Promise((resolve, reject) => {
+      sqliteDb.serialize(() => {
+        sqliteDb.run("BEGIN TRANSACTION");
+        
+        sqliteDb.run(
+          `INSERT INTO pedidos (id, client_name, client_cpf, client_email, client_phone, client_zip, client_address, total, status, pix_code, invoice_status, invoice_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          , orderParams, function(err) {
+            if (err) {
+              sqliteDb.run("ROLLBACK");
+              return reject(err);
+            }
+            
+            const stmt = sqliteDb.prepare(`
+              INSERT INTO itens_pedido (order_id, product_id, product_name, weight, quantity, price)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `);
+            
+            let itemErr = null;
+            for (const item of items) {
+              stmt.run(item, (err) => {
+                if (err) itemErr = err;
+              });
+            }
+            
+            stmt.finalize((err) => {
+              if (err || itemErr) {
+                sqliteDb.run("ROLLBACK");
+                return reject(err || itemErr);
+              }
+              sqliteDb.run("COMMIT", (err) => {
+                if (err) reject(err);
+                else resolve();
+              });
+            });
+          }
+        );
+      });
+    });
+  }
+}
+
+// --- MIDDLEWARE DE AUTENTICAÇÃO BÁSICA ---
+const checkAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const adminUser = process.env.ADMIN_USER || "Flavor97970515";
+  const adminPass = process.env.ADMIN_PASS || "winS4IDAQUI2010!#";
+  
+  const expectedAuth = "Basic " + Buffer.from(`${adminUser}:${adminPass}`).toString("base64");
+  
+  if (authHeader === expectedAuth) {
+    return next();
+  }
+  
+  res.setHeader("WWW-Authenticate", 'Basic realm="Admin Sabor da Terra"');
+  res.status(401).send("<h1>Acesso Negado</h1><p>Usuário ou senha incorretos.</p>");
+};
+
 // --- AUXILIAR: Gerador de BR Code Pix Estático (Valor Dinâmico) ---
-// Especificação simplificada do BR Code do Banco Central para simulação
 function generateBRCode(pixKey, amount, merchantName, merchantCity) {
-  // Versão simplificada que funciona para testes de BR Code
   const cleanKey = pixKey.replace(/[^\w@.-]/g, "");
   const cleanName = merchantName.substring(0, 25).toUpperCase();
   const cleanCity = merchantCity.substring(0, 15).toUpperCase();
   const cleanAmount = parseFloat(amount).toFixed(2);
 
-  // Formato do payload padrão BACEN (EMV CO-CP-01)
   const formatField = (id, val) => {
     const len = val.length.toString().padStart(2, "0");
     return `${id}${len}${val}`;
   };
 
-  // Sub-IDs do Merchant Account Info (ID 26)
   const merchantAccountInfo = formatField("00", "br.gov.bcb.pix") + formatField("01", cleanKey);
 
   const payload = [
-    formatField("00", "01"), // Payload Format Indicator
-    formatField("26", merchantAccountInfo), // Merchant Account Information
-    formatField("52", "0000"), // Merchant Category Code
-    formatField("53", "986"), // Transaction Currency (986 = Real BRL)
-    formatField("54", cleanAmount), // Transaction Amount
-    formatField("58", "BR"), // Country Code
-    formatField("59", cleanName), // Merchant Name
-    formatField("60", cleanCity), // Merchant City
-    formatField("62", formatField("05", "ST0001")) // Additional Data (TxID)
+    formatField("00", "01"),
+    formatField("26", merchantAccountInfo),
+    formatField("52", "0000"),
+    formatField("53", "986"),
+    formatField("54", cleanAmount),
+    formatField("58", "BR"),
+    formatField("59", cleanName),
+    formatField("60", cleanCity),
+    formatField("62", formatField("05", "ST0001"))
   ].join("");
 
-  // Adiciona CRC16 no final
   const payloadWithCrcPlaceholder = payload + "6304";
   
-  // Função básica de CRC16 CCITT
   let crc = 0xFFFF;
   for (let i = 0; i < payloadWithCrcPlaceholder.length; i++) {
     const charCode = payloadWithCrcPlaceholder.charCodeAt(i);
@@ -140,10 +323,8 @@ app.post("/api/checkout", (req, res) => {
     return res.status(400).json({ error: "Dados inválidos para checkout." });
   }
 
-  // Gera ID único
   const orderId = `ST-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
   
-  // Calcula Total
   let total = 0;
   cart.forEach(item => {
     total += item.price * item.quantity;
@@ -154,14 +335,10 @@ app.post("/api/checkout", (req, res) => {
   let qrCodeUrl = "";
 
   if (config.simulationMode) {
-    // SIMULAÇÃO: Gera BR Code Pix Estático de Valor Dinâmico localmente
     pixCode = generateBRCode(config.pixKey, total, config.merchantName, config.merchantCity);
-    // Usa uma API pública para gerar a imagem do QR Code
     qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pixCode)}`;
     saveOrder();
   } else {
-    // REAL: Integração com a API do Mercado Pago
-    // (Para este exemplo, criamos a estrutura, mas caso falhe ou falte credencial, faz fallback para simulado)
     const https = require("https");
     const postData = JSON.stringify({
       transaction_amount: parseFloat(total.toFixed(2)),
@@ -226,12 +403,9 @@ app.post("/api/checkout", (req, res) => {
     saveOrder();
   }
 
-  function saveOrder() {
-    // Insere pedido no banco
-    db.run(
-      `INSERT INTO pedidos (id, client_name, client_cpf, client_email, client_phone, client_zip, client_address, total, status, pix_code, invoice_status, invoice_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+  async function saveOrder() {
+    try {
+      const orderParams = [
         orderId,
         client.name,
         client.cpf,
@@ -245,60 +419,54 @@ app.post("/api/checkout", (req, res) => {
         "pending",
         "",
         createdAt
-      ],
-      function (err) {
-        if (err) {
-          console.error("Erro ao salvar pedido:", err);
-          return res.status(500).json({ error: "Erro interno ao salvar pedido." });
-        }
+      ];
 
-        // Insere itens do pedido
-        const stmt = db.prepare(`
-          INSERT INTO itens_pedido (order_id, product_id, product_name, weight, quantity, price)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `);
+      const items = cart.map(item => [
+        orderId,
+        item.id,
+        item.name,
+        item.weight,
+        item.quantity,
+        item.price
+      ]);
 
-        cart.forEach(item => {
-          stmt.run(orderId, item.id, item.name, item.weight, item.quantity, item.price);
-        });
+      await saveOrderAndItems(orderParams, items);
 
-        stmt.finalize();
-
-        res.json({
-          orderId,
-          total,
-          pixCode,
-          qrCodeUrl,
-          status: "pending"
-        });
-      }
-    );
+      res.json({
+        orderId,
+        total,
+        pixCode,
+        qrCodeUrl,
+        status: "pending"
+      });
+    } catch (err) {
+      console.error("Erro ao salvar pedido no banco de dados:", err);
+      res.status(500).json({ error: "Erro interno ao registrar pedido." });
+    }
   }
 });
 
 // Rota 2: Verifica status do pedido (usado por Polling na tela)
-app.get("/api/order/status/:id", (req, res) => {
+app.get("/api/order/status/:id", async (req, res) => {
   const orderId = req.params.id;
-
-  db.get("SELECT status, invoice_status, invoice_id FROM pedidos WHERE id = ?", [orderId], (err, row) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ error: "Erro ao consultar status." });
-    }
+  try {
+    const row = await getRow("SELECT status, invoice_status, invoice_id FROM pedidos WHERE id = ?", [orderId]);
     if (!row) {
       return res.status(404).json({ error: "Pedido não encontrado." });
     }
     res.json(row);
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao consultar status." });
+  }
 });
 
 // Rota 3: Simulador de Confirmação de Pagamento (Developer/Test Tool)
-// Permite ao usuário clicar em "Simular Pagamento" no frontend para confirmar o Pix sem precisar pagar de verdade
-app.post("/api/simulate-payment/:id", (req, res) => {
+app.post("/api/simulate-payment/:id", async (req, res) => {
   const orderId = req.params.id;
-
-  db.get("SELECT * FROM pedidos WHERE id = ?", [orderId], (err, order) => {
-    if (err || !order) {
+  try {
+    const order = await getRow("SELECT * FROM pedidos WHERE id = ?", [orderId]);
+    if (!order) {
       return res.status(404).json({ error: "Pedido não encontrado para simulação." });
     }
 
@@ -306,40 +474,33 @@ app.post("/api/simulate-payment/:id", (req, res) => {
       return res.json({ message: "Pedido já estava pago.", order });
     }
 
-    // Altera o status para Pago
-    db.run("UPDATE pedidos SET status = 'paid' WHERE id = ?", [orderId], (err) => {
-      if (err) {
-        return res.status(500).json({ error: "Erro ao atualizar status." });
-      }
-
-      // Busca os itens para constar no log e simulação
-      db.all("SELECT * FROM itens_pedido WHERE order_id = ?", [orderId], (err, items) => {
-        // Dispara as automações assincronamente (E-mail + Nota Fiscal)
-        processAutomations(order, items);
-        
-        res.json({
-          message: "Pagamento simulado com sucesso!",
-          orderId,
-          status: "paid"
-        });
-      });
+    await runQuery("UPDATE pedidos SET status = 'paid' WHERE id = ?", [orderId]);
+    const items = await getAllRows("SELECT * FROM itens_pedido WHERE order_id = ?", [orderId]);
+    
+    // Dispara as automações assincronamente (E-mail + Nota Fiscal)
+    processAutomations(order, items);
+    
+    res.json({
+      message: "Pagamento simulado com sucesso!",
+      orderId,
+      status: "paid"
     });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro ao processar simulação de pagamento." });
+  }
 });
 
-// Rota 4: Webhook real do intermediador (Mercado Pago / Asaas)
+// Rota 4: Webhook real do intermediador (Mercado Pago)
 app.post("/api/webhooks/payment", (req, res) => {
-  // Responde imediatamente com 200 OK para evitar timeouts
   res.sendStatus(200);
 
   const payload = req.body;
   console.log("Webhook recebido:", payload);
 
-  // Exemplo básico para Mercado Pago (IPN / Webhook de pagamento)
   if (payload.type === "payment" && payload.data && payload.data.id) {
     const paymentId = payload.data.id;
     
-    // Consulta o pagamento no Mercado Pago
     const https = require("https");
     const options = {
       hostname: "api.mercadopago.com",
@@ -354,22 +515,19 @@ app.post("/api/webhooks/payment", (req, res) => {
     const mpReq = https.request(options, (mpRes) => {
       let body = "";
       mpRes.on("data", (d) => body += d);
-      mpRes.on("end", () => {
+      mpRes.on("end", async () => {
         try {
           const paymentData = JSON.parse(body);
           if (paymentData.status === "approved") {
-            const externalRef = paymentData.external_reference; // Deve conter o orderId
+            const externalRef = paymentData.external_reference;
+            const qrCode = paymentData.point_of_interaction?.transaction_data?.qr_code;
             
-            // Localiza o pedido no banco
-            db.get("SELECT * FROM pedidos WHERE id = ? OR pix_code = ?", [externalRef, paymentData.point_of_interaction?.transaction_data?.qr_code], (err, order) => {
-              if (order && order.status === "pending") {
-                db.run("UPDATE pedidos SET status = 'paid' WHERE id = ?", [order.id], () => {
-                  db.all("SELECT * FROM itens_pedido WHERE order_id = ?", [order.id], (err, items) => {
-                    processAutomations(order, items);
-                  });
-                });
-              }
-            });
+            const order = await getRow("SELECT * FROM pedidos WHERE id = ? OR pix_code = ?", [externalRef, qrCode]);
+            if (order && order.status === "pending") {
+              await runQuery("UPDATE pedidos SET status = 'paid' WHERE id = ?", [order.id]);
+              const items = await getAllRows("SELECT * FROM itens_pedido WHERE order_id = ?", [order.id]);
+              processAutomations(order, items);
+            }
           }
         } catch (e) {
           console.error("Erro ao processar dados do webhook:", e);
@@ -384,7 +542,7 @@ app.post("/api/webhooks/payment", (req, res) => {
 function processAutomations(order, items) {
   console.log(`\n--- INICIANDO AUTOMATIZAÇÕES PARA O PEDIDO ${order.id} ---`);
 
-  // 1. Simulação / Envio do E-mail para a Empresa
+  // 1. Envio do E-mail para a Empresa
   console.log(`[E-MAIL] Preparando e-mail de notificação para: ${config.email.notifyTo}`);
   const itemsText = items.map(item => `  - ${item.quantity}x ${item.product_name} (${item.weight}) - R$ ${item.price.toFixed(2)} cada`).join("\n");
   const emailBody = `
@@ -408,7 +566,6 @@ Status da Nota Fiscal: Pendente (Processando na SEFAZ...)
   `;
   console.log(emailBody);
 
-  // Tenta enviar e-mail real se não estiver em modo de simulação
   if (!config.simulationMode && config.email.smtpUser !== "seu_email@gmail.com") {
     const nodemailer = require("nodemailer");
     const transporter = nodemailer.createTransport({
@@ -435,20 +592,17 @@ Status da Nota Fiscal: Pendente (Processando na SEFAZ...)
     console.log("[E-MAIL] [SIMULAÇÃO] E-mail simulado com sucesso! (Nenhum e-mail real foi enviado)");
   }
 
-  // 2. Simulação / Emissão de Nota Fiscal
+  // 2. Emissão de Nota Fiscal
   console.log(`[NOTA FISCAL] Iniciando comunicação com API SEFAZ/FocusNFe para emitir NFC-e do pedido ${order.id}...`);
-  console.log(`[NOTA FISCAL] Enviando dados do CNPJ/CPF ${order.client_cpf} e valor de R$ ${order.total.toFixed(2)}...`);
 
   if (!config.simulationMode && config.focusNfe.token !== "SEU_FOCUS_NFE_TOKEN_AQUI") {
-    // Código de Integração Real com FocusNFe (NFC-e)
     const https = require("https");
-    // Dados da nota fiscal baseados nos produtos e cliente
     const invoicePayload = JSON.stringify({
       natureza_operacao: "Venda de mercadorias",
-      regime_tributario: 1, // Simples Nacional (padrão MEI/ME)
-      cnpj_emitente: "SEU_CNPJ_EMITENTE_AQUI", // Deve ser configurado
-      presenca_comprador: 1, // Operação presencial / entrega
-      modalidade_frete: 9, // Sem frete
+      regime_tributario: 1,
+      cnpj_emitente: "SEU_CNPJ_EMITENTE_AQUI",
+      presenca_comprador: 1,
+      modalidade_frete: 9,
       consumidor_final: 1,
       destinatario: {
         nome: order.client_name,
@@ -459,19 +613,19 @@ Status da Nota Fiscal: Pendente (Processando na SEFAZ...)
           numero: order.client_address.split(",")[1]?.split("-")[0]?.trim() || "S/N",
           bairro: order.client_address.split("-")[1]?.split(",")[0]?.trim() || "Centro",
           municipio: config.merchantCity,
-          uf: "SP" // Padrão
+          uf: "SP"
         }
       },
       itens: items.map((item, index) => ({
         numero_item: index + 1,
         codigo_produto: item.product_id,
         descricao: item.product_name,
-        cfop: "5102", // CFOP de venda de mercadorias
+        cfop: "5102",
         unidade_comercial: "UN",
         quantidade_comercial: item.quantity,
         valor_unitario_comercial: item.price,
         valor_bruto: item.price * item.quantity,
-        icoms_situacao_tributaria: "102" // Simples Nacional sem crédito
+        icoms_situacao_tributaria: "102"
       }))
     });
 
@@ -479,7 +633,6 @@ Status da Nota Fiscal: Pendente (Processando na SEFAZ...)
     const hostname = isSandbox ? "homologacao.focusnfe.com.br" : "api.focusnfe.com.br";
     const path = "/v2/nfce";
     
-    // Requisição para emissão de nota
     const mpOptions = {
       hostname,
       port: 443,
@@ -498,14 +651,14 @@ Status da Nota Fiscal: Pendente (Processando na SEFAZ...)
         try {
           const nfData = JSON.parse(body);
           if (nfRes.statusCode === 201 || nfRes.statusCode === 202) {
-            // Nota enviada ou processando
             const invoiceId = nfData.chave_nfe || `NFE-${Date.now().toString().slice(-6)}`;
-            db.run("UPDATE pedidos SET invoice_status = 'emitted', invoice_id = ? WHERE id = ?", [invoiceId, order.id], () => {
-              console.log(`[NOTA FISCAL] Nota Fiscal emitida com sucesso! Chave: ${invoiceId}`);
-            });
+            runQuery("UPDATE pedidos SET invoice_status = 'emitted', invoice_id = ? WHERE id = ?", [invoiceId, order.id])
+              .then(() => console.log(`[NOTA FISCAL] Nota Fiscal emitida com sucesso! Chave: ${invoiceId}`))
+              .catch(err => console.error("Erro ao atualizar NF:", err));
           } else {
             console.error("[NOTA FISCAL] Erro ao emitir Nota Fiscal na API:", nfData);
-            db.run("UPDATE pedidos SET invoice_status = 'failed' WHERE id = ?", [order.id]);
+            runQuery("UPDATE pedidos SET invoice_status = 'failed' WHERE id = ?", [order.id])
+              .catch(err => console.error("Erro ao atualizar NF falha:", err));
           }
         } catch (e) {
           console.error("[NOTA FISCAL] Erro ao decodificar retorno de Nota Fiscal:", e);
@@ -518,26 +671,35 @@ Status da Nota Fiscal: Pendente (Processando na SEFAZ...)
     // SIMULAÇÃO: Simula o processamento da Nota Fiscal e retorna sucesso após 2 segundos
     setTimeout(() => {
       const mockInvoiceId = `352606` + Math.floor(Math.random() * 90000000000000000000000000000000000000).toString().slice(0, 38);
-      db.run("UPDATE pedidos SET invoice_status = 'emitted', invoice_id = ? WHERE id = ?", [mockInvoiceId, order.id], () => {
-        console.log(`[NOTA FISCAL] [SIMULAÇÃO] Nota Fiscal emitida e salva! Chave: ${mockInvoiceId}`);
-      });
+      runQuery("UPDATE pedidos SET invoice_status = 'emitted', invoice_id = ? WHERE id = ?", [mockInvoiceId, order.id])
+        .then(() => console.log(`[NOTA FISCAL] [SIMULAÇÃO] Nota Fiscal emitida e salva! Chave: ${mockInvoiceId}`))
+        .catch(err => console.error("Erro ao salvar NF simulada:", err));
     }, 2000);
   }
 }
 
-// Serve o painel Admin do site
-app.get("/admin", (req, res) => {
+// Serve o painel Admin do site (protegido por Basic Auth)
+app.get("/admin", checkAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "admin.html"));
 });
 
-// API Rota: Listagem de todos os pedidos no banco (para o Painel Admin)
-app.get("/api/admin/orders", (req, res) => {
-  db.all("SELECT * FROM pedidos ORDER BY created_at DESC", [], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
+app.get("/admin.html", checkAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, "admin.html"));
+});
+
+// API Rota: Listagem de todos os pedidos no banco (para o Painel Admin - protegido por Basic Auth)
+app.get("/api/admin/orders", checkAuth, async (req, res) => {
+  try {
+    const orders = await getAllRows("SELECT * FROM pedidos ORDER BY created_at DESC");
+    for (const order of orders) {
+      const items = await getAllRows("SELECT product_name, weight, quantity, price FROM itens_pedido WHERE order_id = ?", [order.id]);
+      order.items = items;
     }
-    res.json(rows);
-  });
+    res.json(orders);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Inicialização do Servidor
