@@ -12,19 +12,21 @@ from datetime import datetime
 try:
     import psycopg2
     HAS_PG = True
-    print("Diagnóstico: psycopg2 importado com sucesso!")
+    print("Diagnóstico: psycopg2 importado com sucesso!", flush=True)
 except ImportError as e:
     HAS_PG = False
-    print("Diagnóstico: Falha ao importar psycopg2. Erro:", e)
+    print("Diagnóstico: Falha ao importar psycopg2. Erro:", e, flush=True)
+    import traceback
+    traceback.print_exc()
 
 PORT = int(os.environ.get("PORT", 8000))
 DB_FILE = "database.db"
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-print("Diagnóstico: DATABASE_URL configurada?", bool(DATABASE_URL))
+print("Diagnóstico: DATABASE_URL configurada?", bool(DATABASE_URL), flush=True)
 if DATABASE_URL:
     # Mostra parte do host de forma segura para confirmar que não está vazio
-    print("Diagnóstico: DATABASE_URL começa com:", DATABASE_URL[:25] + "...")
+    print("Diagnóstico: DATABASE_URL começa com:", DATABASE_URL[:25] + "...", flush=True)
 
 # --- CONEXÃO E ABSTRAÇÃO DE BANCO DE DADOS ---
 
@@ -41,7 +43,7 @@ def get_db_connection():
             conn = psycopg2.connect(url)
             return conn, True
         except Exception as e:
-            print("Erro ao conectar ao PostgreSQL, usando SQLite local:", e)
+            print("Erro ao conectar ao PostgreSQL, usando SQLite local:", e, flush=True)
     
     conn = sqlite3.connect(DB_FILE)
     return conn, False
@@ -89,7 +91,7 @@ def init_db():
     
     conn.commit()
     conn.close()
-    print(f"Banco de dados inicializado. Tipo: {'PostgreSQL (Nuvem)' if is_pg else 'SQLite (Local)'}")
+    print(f"Banco de dados inicializado. Tipo: {'PostgreSQL (Nuvem)' if is_pg else 'SQLite (Local)'}", flush=True)
 
 # Helper para consultas do tipo SELECT
 def query_db(query, args=(), one=False):
