@@ -12,12 +12,19 @@ from datetime import datetime
 try:
     import psycopg2
     HAS_PG = True
-except ImportError:
+    print("Diagnóstico: psycopg2 importado com sucesso!")
+except ImportError as e:
     HAS_PG = False
+    print("Diagnóstico: Falha ao importar psycopg2. Erro:", e)
 
 PORT = int(os.environ.get("PORT", 8000))
 DB_FILE = "database.db"
 DATABASE_URL = os.environ.get("DATABASE_URL")
+
+print("Diagnóstico: DATABASE_URL configurada?", bool(DATABASE_URL))
+if DATABASE_URL:
+    # Mostra parte do host de forma segura para confirmar que não está vazio
+    print("Diagnóstico: DATABASE_URL começa com:", DATABASE_URL[:25] + "...")
 
 # --- CONEXÃO E ABSTRAÇÃO DE BANCO DE DADOS ---
 
