@@ -299,6 +299,14 @@ class CustomHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
             return
 
+        # Rota para servir imagens do catálogo com fallback para a raiz (caso tenham sido enviadas fora da pasta images)
+        if self.path.startswith("/images/"):
+            filename = self.path.split("/")[-1]
+            local_images_path = os.path.join("images", filename)
+            # Se o arquivo não existir dentro de images/, mas existir na raiz, reescreve o caminho interno para a raiz
+            if not os.path.exists(local_images_path) and os.path.exists(filename):
+                self.path = "/" + filename
+
         # Fallback para arquivos estáticos
         super().do_GET()
 
